@@ -1,7 +1,7 @@
-import {Component, createElement, findDOMNode} from 'rax';
+import {createElement, useState, useRef} from 'rax';
+import findDOMNode from 'rax-find-dom-node';
 import {isWeex, isWeb} from 'universal-env';
 import View from 'rax-view';
-import RefreshControl from 'rax-refreshcontrol';
 import Timer from './timer';
 
 const DEFAULT_END_REACHED_THRESHOLD = 500;
@@ -9,31 +9,33 @@ const DEFAULT_SCROLL_CALLBACK_THROTTLE = 50;
 const FULL_WIDTH = 750;
 const STYLE_NODE_ID = 'rax-scrollview-style';
 
-class ScrollView extends Component {
-  static propTypes = {};
 
-  static defaultProps = {
-    scrollEventThrottle: DEFAULT_SCROLL_CALLBACK_THROTTLE,
-    onEndReachedThreshold: DEFAULT_END_REACHED_THRESHOLD,
-    showsHorizontalScrollIndicator: true,
-    showsVerticalScrollIndicator: true,
-    className: 'rax-scrollview',
-  };
+let ScrollView = (props) => {
+  let {
+    id,
+    style,
+    scrollEventThrottle,
+    showsHorizontalScrollIndicator,
+    showsVerticalScrollIndicator,
+    onEndReached,
+    onEndReachedThreshold,
+    onScroll,
+    children,
+  } = props;
 
-  lastScrollDistance = 0;
-  lastScrollContentSize = 0;
-  loadmoreretry = 1;
+  let thisOnEndReachedThreshold = onEndReachedThreshold || DEFAULT_END_REACHED_THRESHOLD;
+  let thisScrollEventThrottle = scrollEventThrottle || DEFAULT_SCROLL_CALLBACK_THROTTLE;
+  let lastScrollDistance = 0;
+  let lastScrollContentSize = 0;
+  let thisLoadmoreretry = 1;
+  let scrollerNode, scrollerNodeSize, scrollerContentNode;
+  let [loadmoreretry, setLoadmoreretry] = useState(0);
+  let scrollerEl = useRef(null);
+  let contentContainerEl = useRef(null);
 
-  constructor(props) {
-    super(props);
-    this.state = {
-      loadmoreretry: 0,
-    };
-  }
-
-  handleScroll = (e) => {
+  let thisHandleScroll = (e) => {
     if (isWeb) {
-      if (this.props.onScroll) {
+      if (props.onScroll) {
         e.nativeEvent = {
           get contentOffset() {
             return {
@@ -48,31 +50,32 @@ class ScrollView extends Component {
             };
           }
         };
-        this.props.onScroll(e);
+        props.onScroll(e);
       }
 
-      if (this.props.onEndReached) {
-        if (!this.scrollerNode) {
-          this.scrollerNode = findDOMNode(this.refs.scroller);
-          this.scrollerContentNode = findDOMNode(this.refs.contentContainer);
+      if (props.onEndReached) {
+        if (!scrollerNode) {
+          scrollerNode = findDOMNode(scrollerEl.current);
+          scrollerContentNode = findDOMNode(contentContainerEl.current);
 
-          this.scrollerNodeSize = this.props.horizontal ? this.scrollerNode.offsetWidth : this.scrollerNode.offsetHeight;
+          scrollerNodeSize = props.horizontal ? scrollerNode.offsetWidth : scrollerNode.offsetHeight;
         }
 
         // NOTE：in iOS7/8 offsetHeight/Width is is inaccurate （ use scrollHeight/Width ）
-        let scrollContentSize = this.props.horizontal ? this.scrollerNode.scrollWidth : this.scrollerNode.scrollHeight;
-        let scrollDistance = this.props.horizontal ? this.scrollerNode.scrollLeft : this.scrollerNode.scrollTop;
-        let isEndReached = scrollContentSize - scrollDistance - this.scrollerNodeSize < this.props.onEndReachedThreshold;
+        let scrollContentSize = props.horizontal ? scrollerNode.scrollWidth : scrollerNode.scrollHeight;
+        let scrollDistance = props.horizontal ? scrollerNode.scrollLeft : scrollerNode.scrollTop;
+        let isEndReached = scrollContentSize - scrollDistance - scrollerNodeSize < thisOnEndReachedThreshold;
 
-        let isScrollToEnd = scrollDistance > this.lastScrollDistance;
-        let isLoadedMoreContent = scrollContentSize != this.lastScrollContentSize;
+        let isScrollToEnd = scrollDistance > lastScrollDistance;
+        let isLoadedMoreContent = scrollContentSize != lastScrollContentSize;
 
         if (isEndReached && isScrollToEnd && isLoadedMoreContent) {
-          this.lastScrollContentSize = scrollContentSize;
-          this.props.onEndReached(e);
+          lastScrollContentSize = scrollContentSize;
+          props.onEndReached(e);
         }
 
-        this.lastScrollDistance = scrollDistance;
+
+        lastScrollDistance = scrollDistance;
       }
     }
     if (isWeex) {
@@ -87,181 +90,119 @@ class ScrollView extends Component {
           height: e.contentSize.height
         } : null
       };
-      this.props.onScroll(e);
+      props.onScroll(e);
     }
-  }
+  };
 
-  resetScroll = () => {
+  const resetScroll = () => {
     if (isWeb) {
-      this.lastScrollContentSize = 0;
-      this.lastScrollDistance = 0;
+      lastScrollContentSize = 0;
+      lastScrollDistance = 0;
     } else {
-      this.setState({
-        loadmoreretry: this.loadmoreretry++,
+      setLoadmoreretry({
+        loadmoreretry: thisLoadmoreretry++,
       });
+    }
+  };
+
+  // In weex must be int value
+  onEndReachedThreshold = parseInt(onEndReachedThreshold, 10);
+
+  const contentContainerStyle = [
+    props.horizontal && styles.contentContainerHorizontal,
+    props.contentContainerStyle,
+  ];
+
+  // bugfix: fix scrollview flex in ios 78
+  if (!props.horizontal) {
+    contentContainerStyle.push({...styles.viewBase, ...styles.containerWebStyle});
+  }
+
+  if (props.style) {
+    let childLayoutProps = ['alignItems', 'justifyContent']
+      .filter((prop) => props.style[prop] !== undefined);
+
+    if (childLayoutProps.length !== 0) {
+      console.warn(
+        'ScrollView child layout (' + JSON.stringify(childLayoutProps) +
+        ') must be applied through the contentContainerStyle prop.'
+      );
     }
   }
 
-  scrollTo = (options) => {
-    let x = parseInt(options.x);
-    let y = parseInt(options.y);
-    let animated = options && typeof options.animated !== 'undefined' ? options.animated : true;
-
-    if (isWeex) {
-      let dom = __weex_require__('@weex-module/dom');
-      let contentContainer = findDOMNode(this.refs.contentContainer);
-      dom.scrollToElement(contentContainer.ref, {
-        offset: x || y || 0,
-        animated
-      });
-    } else {
-      let pixelRatio = document.documentElement.clientWidth / FULL_WIDTH;
-      let scrollView = findDOMNode(this.refs.scroller);
-      let scrollLeft = scrollView.scrollLeft;
-      let scrollTop = scrollView.scrollTop;
-
-      if (animated) {
-        let timer = new Timer({
-          duration: 400,
-          easing: 'easeOutSine',
-          onRun: (e) => {
-            if (x >= 0) {
-              scrollView.scrollLeft = scrollLeft + e.percent * (x * pixelRatio - scrollLeft);
-            }
-            if (y >= 0) {
-              scrollView.scrollTop = scrollTop + e.percent * (y * pixelRatio - scrollTop);
-            }
-          }
-        });
-        timer.run();
-      } else {
-        if (x >= 0) {
-          findDOMNode(this.refs.scroller).scrollLeft = pixelRatio * x;
-        }
-
-        if (y >= 0) {
-          findDOMNode(this.refs.scroller).scrollTop = pixelRatio * y;
-        }
-      }
-    }
+  let refreshContainer = <View />, contentChild;
+  if (Array.isArray(children)) {
+    contentChild = children.map((child, index) => {
+      return child;
+    });
+  } else {
+    contentChild = children;
   }
 
-  render() {
-    let {
-      id,
-      style,
-      scrollEventThrottle,
-      showsHorizontalScrollIndicator,
-      showsVerticalScrollIndicator,
-      onEndReached,
-      onEndReachedThreshold,
-      onScroll,
-      children,
-    } = this.props;
+  const contentContainer =
+    <div
+      ref={contentContainerEl}
+      style={contentContainerStyle}>
+      {contentChild}
+    </div>;
 
-    // In weex must be int value
-    onEndReachedThreshold = parseInt(onEndReachedThreshold, 10);
+  const baseStyle = props.horizontal ? styles.baseHorizontal : {...styles.viewBase, ...styles.baseVertical};
 
-    const contentContainerStyle = [
-      this.props.horizontal && styles.contentContainerHorizontal,
-      this.props.contentContainerStyle,
-    ];
+  const scrollerStyle = {
+    ...baseStyle,
+    ...props.style
+  };
 
-    // bugfix: fix scrollview flex in ios 78
-    if (!isWeex && !this.props.horizontal) {
-      contentContainerStyle.push(styles.containerWebStyle);
+  let showsScrollIndicator = props.horizontal ? showsHorizontalScrollIndicator : showsVerticalScrollIndicator;
+
+  if (isWeex) {
+    return (
+      <scroller
+        {...props}
+        style={scrollerStyle}
+        showScrollbar={showsScrollIndicator}
+        onLoadmore={onEndReached}
+        onScroll={onScroll ? thisHandleScroll : null}
+        loadmoreoffset={onEndReachedThreshold}
+        loadmoreretry={loadmoreretry}
+        scrollDirection={props.horizontal ? 'horizontal' : 'vertical'}
+      >
+        {refreshContainer}
+        {contentContainer}
+      </scroller>
+    );
+  } else {
+    let handleScroll = thisHandleScroll;
+    if (thisScrollEventThrottle) {
+      handleScroll = throttle(handleScroll, thisScrollEventThrottle);
+    }
+    if (!showsScrollIndicator && typeof document !== 'undefined' && !document.getElementById(STYLE_NODE_ID)) {
+      let styleNode = document.createElement('style');
+      styleNode.id = STYLE_NODE_ID;
+      document.head.appendChild(styleNode);
+      styleNode.innerHTML = `.${props.className}::-webkit-scrollbar{display: none;}`;
     }
 
-    if (this.props.style) {
-      let childLayoutProps = ['alignItems', 'justifyContent']
-        .filter((prop) => this.props.style[prop] !== undefined);
+    scrollerStyle.webkitOverflowScrolling = 'touch';
+    scrollerStyle.overflow = 'scroll';
 
-      if (childLayoutProps.length !== 0) {
-        console.warn(
-          'ScrollView child layout (' + JSON.stringify(childLayoutProps) +
-          ') must be applied through the contentContainerStyle prop.'
-        );
+    let webProps = {
+      ...props,
+      ...{
+        ref: scrollerEl,
+        style: scrollerStyle,
+        onScroll: handleScroll
       }
-    }
-
-    let refreshContainer = <View />, contentChild;
-    if (Array.isArray(children)) {
-      contentChild = children.map((child, index) => {
-        if (child && child.type == RefreshControl) {
-          refreshContainer = child;
-        } else {
-          return child;
-        }
-      });
-    } else {
-      contentChild = children;
-    }
-
-    const contentContainer =
-      <View
-        ref="contentContainer"
-        style={contentContainerStyle}>
-        {contentChild}
-      </View>;
-
-    const baseStyle = this.props.horizontal ? styles.baseHorizontal : styles.baseVertical;
-
-    const scrollerStyle = {
-      ...baseStyle,
-      ...this.props.style
     };
+    delete webProps.onEndReachedThreshold;
 
-    let showsScrollIndicator = this.props.horizontal ? showsHorizontalScrollIndicator : showsVerticalScrollIndicator;
-
-    if (isWeex) {
-      return (
-        <scroller
-          {...this.props}
-          style={scrollerStyle}
-          showScrollbar={showsScrollIndicator}
-          onLoadmore={onEndReached}
-          onScroll={onScroll ? this.handleScroll : null}
-          loadmoreoffset={onEndReachedThreshold}
-          loadmoreretry={this.state.loadmoreretry}
-          scrollDirection={this.props.horizontal ? 'horizontal' : 'vertical'}
-        >
-          {refreshContainer}
-          {contentContainer}
-        </scroller>
-      );
-    } else {
-      let handleScroll = this.handleScroll;
-      if (scrollEventThrottle) {
-        handleScroll = throttle(handleScroll, scrollEventThrottle);
-      }
-      if (!showsScrollIndicator && typeof document !== 'undefined' && !document.getElementById(STYLE_NODE_ID)) {
-        let styleNode = document.createElement('style');
-        styleNode.id = STYLE_NODE_ID;
-        document.head.appendChild(styleNode);
-        styleNode.innerHTML = `.${this.props.className}::-webkit-scrollbar{display: none;}`;
-      }
-
-      scrollerStyle.webkitOverflowScrolling = 'touch';
-      scrollerStyle.overflow = 'scroll';
-
-      let webProps = {
-        ...this.props,
-        ...{
-          ref: 'scroller',
-          style: scrollerStyle,
-          onScroll: handleScroll
-        }
-      };
-      delete webProps.onEndReachedThreshold;
-
-      return (
-        <View {...webProps}>
-          {contentContainer}
-        </View>
-      );
-    }
+    return (
+      <div {...webProps}>
+        {contentContainer}
+      </div>
+    );
   }
-}
+};
 
 function throttle(func, wait) {
   var ctx, args, rtn, timeoutID;
@@ -287,6 +228,15 @@ function throttle(func, wait) {
 }
 
 const styles = {
+  viewBase: {
+    border: '0 solid black',
+    position: 'relative',
+    boxSizing: 'border-box',
+    display: 'flex',
+    flexDirection: 'column',
+    alignContent: 'flex-start',
+    flexShrink: 0
+  },
   baseVertical: {
     flex: 1,
     flexDirection: 'column',
