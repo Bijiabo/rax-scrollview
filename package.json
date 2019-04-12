@@ -1,6 +1,6 @@
 {
   "name": "rax-scrollview",
-  "version": "1.0.0-beta.0",
+  "version": "1.0.0-beta.1",
   "description": "ScrollView component for Rax.",
   "license": "BSD-3-Clause",
   "main": "lib/index.js",
@@ -12,7 +12,8 @@
   },
   "files": [
     "dist",
-    "lib"
+    "lib",
+    "src"
   ],
   "repository": {
     "type": "git",
