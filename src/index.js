@@ -130,20 +130,20 @@ let ScrollView = (props) => {
     }
   }
 
-  let refreshContainer = <View />, contentChild;
+  let contentChildren;
   if (Array.isArray(children)) {
-    contentChild = children.map((child, index) => {
+    contentChildren = children.map((child, index) => {
       return child;
     });
   } else {
-    contentChild = children;
+    contentChildren = children;
   }
 
   const contentContainer =
     <div
       ref={contentContainerEl}
       style={contentContainerStyle}>
-      {contentChild}
+      {contentChildren}
     </div>;
 
   const baseStyle = props.horizontal ? styles.baseHorizontal : {...styles.viewBase, ...styles.baseVertical};
@@ -167,7 +167,6 @@ let ScrollView = (props) => {
         loadmoreretry={loadmoreretry}
         scrollDirection={props.horizontal ? 'horizontal' : 'vertical'}
       >
-        {refreshContainer}
         {contentContainer}
       </scroller>
     );
