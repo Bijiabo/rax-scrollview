@@ -110,6 +110,7 @@ class ScrollView extends Component {
     if (isWeex) {
       let dom = __weex_require__('@weex-module/dom');
       let contentContainer = findDOMNode(this.refs.contentContainer);
+      // 首屏多个scrollview需要自动滚动到某个默认选中的位置，但是可能内容还未渲染出（不存在contentContainer.ref的情况）
       contentContainer.ref && dom.scrollToElement(contentContainer.ref, {
         offset: x || y || 0,
         animated
